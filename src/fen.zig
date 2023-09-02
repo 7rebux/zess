@@ -16,6 +16,102 @@ const FenError = error{
     InvalidCastlingAbility,
 };
 
+pub fn write(board: *const Board, writer: anytype) !void {
+    try write_pieces(board, writer);
+    try writer.writeAll(" ");
+    try write_side_to_move(board, writer);
+    try writer.writeAll(" ");
+    try write_castling_ability(board, writer);
+    try writer.writeAll(" ");
+    try write_en_passent_target_square(board, writer);
+    try writer.writeAll(" ");
+    try write_halfmove_clock(board, writer);
+    try writer.writeAll(" ");
+    try write_fullmove_counter(board, writer);
+}
+
+fn write_pieces(board: *const Board, writer: anytype) !void {
+    for (0..8) |i| {
+        var empty: u8 = 0;
+
+        for (0..8) |j| {
+            const bit_index = ((j & 0b111) << 3) | (i & 0b111);
+            var piece_char: u8 = ' ';
+
+            inline for (.{
+                board.rook_bitboard,
+                board.pawn_bitboard,
+                board.king_bitboard,
+                board.knight_bitboard,
+                board.bishop_bitboard,
+                board.queen_bitboard,
+            }, .{ 'r', 'p', 'k', 'n', 'b', 'q' }) |piece_board, char| {
+                if (piece_board.state.isSet(bit_index)) {
+                    piece_char = if (board.white_bitboard.state.isSet(bit_index)) std.ascii.toUpper(char) else char;
+                    break;
+                }
+            }
+
+            if (piece_char == ' ') {
+                empty += 1;
+            } else {
+                if (empty != 0) {
+                    try writer.print("{}", .{empty});
+                    empty = 0;
+                }
+
+                try writer.print("{c}", .{piece_char});
+            }
+
+            if (empty != 0 and j == 7) {
+                try writer.print("{}", .{empty});
+            }
+        }
+
+        if (i < 7) {
+            try writer.writeAll("/");
+        }
+    }
+}
+
+fn write_side_to_move(board: *const Board, writer: anytype) !void {
+    const color: u8 = if (board.side_to_move == types.Color.black) 'b' else 'w';
+    try writer.print("{c}", .{color});
+}
+
+fn write_castling_ability(board: *const Board, writer: anytype) !void {
+    if (@as(u4, @bitCast(board.castling_ability)) == 0) {
+        try writer.writeAll("-");
+    } else {
+        inline for (.{
+            board.castling_ability.white_short,
+            board.castling_ability.white_long,
+            board.castling_ability.black_short,
+            board.castling_ability.black_long,
+        }, .{ 'K', 'Q', 'k', 'q' }) |flag, char| {
+            if (flag) {
+                try writer.print("{c}", .{char});
+            }
+        }
+    }
+}
+
+fn write_en_passent_target_square(board: *const Board, writer: anytype) !void {
+    if (board.en_passent_target_square) |square| {
+        try writer.print("{s}{s}", .{ @tagName(square.file), @tagName(square.rank) });
+    } else {
+        try writer.writeAll("-");
+    }
+}
+
+fn write_halfmove_clock(board: *const Board, writer: anytype) !void {
+    try writer.print("{}", .{board.halfmove_clock});
+}
+
+fn write_fullmove_counter(board: *const Board, writer: anytype) !void {
+    try writer.print("{}", .{board.fullmove_counter});
+}
+
 pub fn parse(fen: []const u8) FenError!Board {
     var board: Board = undefined;
     var parts_it = std.mem.split(u8, fen, " ");
@@ -54,7 +150,7 @@ pub fn parse(fen: []const u8) FenError!Board {
 /// the pieces are identified by a single letter from standard English names for chess pieces
 /// as used in the Algebraic Chess Notation.
 /// Uppercase letters are for white pieces, lowercase letters for black pieces.
-pub fn parse_pieces(board: *Board, part: []const u8) FenError!void {
+fn parse_pieces(board: *Board, part: []const u8) FenError!void {
     var i: u8 = 0;
     var ranks_it = std.mem.split(u8, part, "/");
 
@@ -129,7 +225,7 @@ pub fn parse_pieces(board: *Board, part: []const u8) FenError!void {
 }
 
 /// Side to move is one lowercase letter for either White ('w') or Black ('b').
-pub fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
+fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
     switch (part[0]) {
         'w' => {
             board.side_to_move = types.Color.white;
@@ -146,7 +242,7 @@ pub fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
 
 /// If neither side can castle, the symbol '-' is used, otherwise each of four individual castling rights
 /// for king and queen castling for both sides are indicated by a sequence of one to four letters.
-pub fn parse_castling_ability(board: *Board, part: []const u8) FenError!void {
+fn parse_castling_ability(board: *Board, part: []const u8) FenError!void {
     board.castling_ability = .{};
 
     if (part[0] != '-') {
@@ -181,7 +277,7 @@ pub fn parse_castling_ability(board: *Board, part: []const u8) FenError!void {
 /// The en passant target square is specified after a double push of a pawn,
 /// no matter whether an en passant capture is really possible or not.
 /// Other moves than double pawn pushes imply the symbol '-' for this FEN field.
-pub fn parse_en_passent_target_square(board: *Board, part: []const u8) FenError!void {
+fn parse_en_passent_target_square(board: *Board, part: []const u8) FenError!void {
     switch (part.len) {
         1 => {
             if (part[0] != '-') {
@@ -215,7 +311,7 @@ pub fn parse_en_passent_target_square(board: *Board, part: []const u8) FenError!
 
 /// The halfmove clock specifies a decimal number of half moves with respect to the 50 move draw rule.
 /// It is reset to zero after a capture or a pawn move and incremented otherwise.
-pub fn parse_halfmove_clock(board: *Board, part: []const u8) FenError!void {
+fn parse_halfmove_clock(board: *Board, part: []const u8) FenError!void {
     board.halfmove_clock = std.fmt.parseInt(types.HalfmoveClock, part, 10) catch {
         std.log.err("halfmove_clock: {s}", .{part});
         return FenError.InvalidHalfmoveClock;
@@ -223,7 +319,7 @@ pub fn parse_halfmove_clock(board: *Board, part: []const u8) FenError!void {
 }
 
 /// The number of the full moves in a game. It starts at 1, and is incremented after each Black's move.
-pub fn parse_fullmove_counter(board: *Board, part: []const u8) FenError!void {
+fn parse_fullmove_counter(board: *Board, part: []const u8) FenError!void {
     board.fullmove_counter = std.fmt.parseInt(types.FullmoveCounter, part, 10) catch {
         std.log.err("fullmove_counter: {s}", .{part});
         return FenError.InvalidFullmoveCounter;
