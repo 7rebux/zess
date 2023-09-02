@@ -56,7 +56,7 @@ pub fn parse(fen: []const u8) FenError!Board {
 /// Uppercase letters are for white pieces, lowercase letters for black pieces.
 pub fn parse_pieces(board: *Board, part: []const u8) FenError!void {
     var i: u8 = 0;
-    var ranks_it = std.mem.splitBackwards(u8, part, "/");
+    var ranks_it = std.mem.split(u8, part, "/");
 
     board.rook_bitboard = types.Bitboard.initEmpty();
     board.knight_bitboard = types.Bitboard.initEmpty();
