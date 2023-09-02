@@ -20,37 +20,28 @@ pub const Board = struct {
     const Self = @This();
 
     pub fn print(self: *Self, writer: anytype) !void {
-        try writer.print("{any}\n{any}\n{any}\n{any}\n{any}\n\n", .{
-            self.side_to_move,
-            self.castling_ability,
-            self.en_passent_target_square,
-            self.halfmove_clock,
-            self.fullmove_counter,
-        });
+        try writer.print("  a b c d e f g h\n", .{});
+        for (0..8) |i| {
+            try writer.print("{} ", .{i + 1});
+            for (0..8) |j| {
+                const bit_index = ((j & 0b111) << 3) | (i & 0b111);
+                var piece_char: u8 = ' ';
 
-        inline for (.{ "rook", "pawn", "king", "knight", "bishop", "queen", "black", "white" }, .{
-            self.rook_bitboard,
-            self.pawn_bitboard,
-            self.king_bitboard,
-            self.knight_bitboard,
-            self.bishop_bitboard,
-            self.queen_bitboard,
-            self.black_bitboard,
-            self.white_bitboard,
-        }) |name, board| {
-            try writer.print("{s}\n", .{name});
-            try writer.print("  a b c d e f g h\n", .{});
-            for (0..8) |i| {
-                try writer.print("{} ", .{i + 1});
-
-                for (0..8) |j| {
-                    var bit_index = ((j & 0b111) << 3) | (i & 0b111);
-
-                    try writer.print("{s} ", .{if (board.state.isSet(bit_index)) "x" else " "});
+                inline for (.{
+                    self.rook_bitboard,
+                    self.pawn_bitboard,
+                    self.king_bitboard,
+                    self.knight_bitboard,
+                    self.bishop_bitboard,
+                    self.queen_bitboard,
+                }, .{ 'r', 'p', 'k', 'n', 'b', 'q' }) |board, char| {
+                    if (board.state.isSet(bit_index)) {
+                        piece_char = if (self.white_bitboard.state.isSet(bit_index)) std.ascii.toUpper(char) else char;
+                        break;
+                    }
                 }
-                try writer.print("\n", .{});
+                try writer.print("{c} ", .{piece_char});
             }
-
             try writer.print("\n", .{});
         }
     }
