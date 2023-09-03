@@ -360,10 +360,16 @@ test "parse en passent target square with e" {
 }
 
 fn parse_halfmove_clock(board: *Board, part: []const u8) FenError!void {
-    board.halfmove_clock = std.fmt.parseInt(types.HalfmoveClock, part, 10) catch {
+    const halfmove_clock = std.fmt.parseInt(types.HalfmoveClock, part, 10) catch {
         std.log.err("halfmove_clock: {s}", .{part});
         return FenError.InvalidHalfmoveClock;
     };
+
+    if (halfmove_clock > 50) {
+        std.log.err("halfmove_clock: {s}", .{part});
+        return FenError.InvalidHalfmoveClock;
+    }
+    board.halfmove_clock = halfmove_clock;
 }
 
 test "parse halfmove clock with 0" {
@@ -403,10 +409,16 @@ test "parse halfmove clock with -1" {
 }
 
 fn parse_fullmove_counter(board: *Board, part: []const u8) FenError!void {
-    board.fullmove_counter = std.fmt.parseInt(types.FullmoveCounter, part, 10) catch {
+    const fullmove_counter = std.fmt.parseInt(types.FullmoveCounter, part, 10) catch {
         std.log.err("fullmove_counter: {s}", .{part});
         return FenError.InvalidFullmoveCounter;
     };
+
+    if (fullmove_counter > 99) {
+        std.log.err("fullmove_counter: {s}", .{part});
+        return FenError.InvalidFullmoveCounter;
+    }
+    board.fullmove_counter = fullmove_counter;
 }
 
 test "parse fullmove counter with 0" {
