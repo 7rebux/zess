@@ -10,107 +10,11 @@ const FenError = error{
     NotEnoughParts,
     InvalidPiecesPlacement,
     InvalidSideToMove,
-    InvalidEnPassentSquare,
+    InvalidEnPassentTargetSquare,
     InvalidHalfmoveClock,
     InvalidFullmoveCounter,
     InvalidCastlingAbility,
 };
-
-pub fn write(board: *const Board, writer: anytype) !void {
-    try write_pieces(board, writer);
-    try writer.writeAll(" ");
-    try write_side_to_move(board, writer);
-    try writer.writeAll(" ");
-    try write_castling_ability(board, writer);
-    try writer.writeAll(" ");
-    try write_en_passent_target_square(board, writer);
-    try writer.writeAll(" ");
-    try write_halfmove_clock(board, writer);
-    try writer.writeAll(" ");
-    try write_fullmove_counter(board, writer);
-}
-
-fn write_pieces(board: *const Board, writer: anytype) !void {
-    for (0..8) |i| {
-        var empty: u8 = 0;
-
-        for (0..8) |j| {
-            const bit_index = ((j & 0b111) << 3) | (i & 0b111);
-            var piece_char: u8 = ' ';
-
-            inline for (.{
-                board.rook_bitboard,
-                board.pawn_bitboard,
-                board.king_bitboard,
-                board.knight_bitboard,
-                board.bishop_bitboard,
-                board.queen_bitboard,
-            }, .{ 'r', 'p', 'k', 'n', 'b', 'q' }) |piece_board, char| {
-                if (piece_board.state.isSet(bit_index)) {
-                    piece_char = if (board.white_bitboard.state.isSet(bit_index)) std.ascii.toUpper(char) else char;
-                    break;
-                }
-            }
-
-            if (piece_char == ' ') {
-                empty += 1;
-            } else {
-                if (empty != 0) {
-                    try writer.print("{}", .{empty});
-                    empty = 0;
-                }
-
-                try writer.print("{c}", .{piece_char});
-            }
-
-            if (empty != 0 and j == 7) {
-                try writer.print("{}", .{empty});
-            }
-        }
-
-        if (i < 7) {
-            try writer.writeAll("/");
-        }
-    }
-}
-
-fn write_side_to_move(board: *const Board, writer: anytype) !void {
-    const color: u8 = if (board.side_to_move == types.Color.black) 'b' else 'w';
-    try writer.print("{c}", .{color});
-}
-
-fn write_castling_ability(board: *const Board, writer: anytype) !void {
-    if (@as(u4, @bitCast(board.castling_ability)) == 0) {
-        try writer.writeAll("-");
-    } else {
-        inline for (.{
-            board.castling_ability.white_short,
-            board.castling_ability.white_long,
-            board.castling_ability.black_short,
-            board.castling_ability.black_long,
-        }, .{ 'K', 'Q', 'k', 'q' }) |flag, char| {
-            if (flag) {
-                try writer.print("{c}", .{char});
-            }
-        }
-    }
-}
-
-fn write_en_passent_target_square(board: *const Board, writer: anytype) !void {
-    if (board.en_passent_target_square) |square| {
-        try writer.print("{s}{s}", .{ @tagName(square.file), @tagName(square.rank) });
-    } else {
-        try writer.writeAll("-");
-    }
-}
-
-fn write_halfmove_clock(board: *const Board, writer: anytype) !void {
-    try writer.print("{}", .{board.halfmove_clock});
-}
-
-fn write_fullmove_counter(board: *const Board, writer: anytype) !void {
-    try writer.print("{}", .{board.fullmove_counter});
-}
 
 pub fn parse(fen: []const u8) FenError!Board {
     var board: Board = undefined;
@@ -142,14 +46,6 @@ pub fn parse(fen: []const u8) FenError!Board {
     return board;
 }
 
-/// The Piece Placement is determined rank by rank in big-endian order,
-/// that is starting at the 8th rank down to the first rank.
-/// Each rank is separated by the terminal symbol '/' (slash).
-/// One rank, scans piece placement in little-endian file-order from the A to H.
-/// A decimal digit counts consecutive empty squares,
-/// the pieces are identified by a single letter from standard English names for chess pieces
-/// as used in the Algebraic Chess Notation.
-/// Uppercase letters are for white pieces, lowercase letters for black pieces.
 fn parse_pieces(board: *Board, part: []const u8) FenError!void {
     var i: u8 = 0;
     var ranks_it = std.mem.split(u8, part, "/");
@@ -224,8 +120,16 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
     }
 }
 
-/// Side to move is one lowercase letter for either White ('w') or Black ('b').
+test "parse pieces" {
+    return error.SkipZigTest;
+}
+
 fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
+    if (part.len > 1) {
+        std.log.err("side_to_move: {s}", .{part});
+        return FenError.InvalidSideToMove;
+    }
+
     switch (part[0]) {
         'w' => {
             board.side_to_move = types.Color.white;
@@ -240,8 +144,34 @@ fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
     }
 }
 
-/// If neither side can castle, the symbol '-' is used, otherwise each of four individual castling rights
-/// for king and queen castling for both sides are indicated by a sequence of one to four letters.
+test "parse side to move with w" {
+    var board: Board = undefined;
+    try parse_side_to_move(&board, "w");
+    try std.testing.expectEqual(types.Color.white, board.side_to_move);
+}
+
+test "parse side to move with b" {
+    var board: Board = undefined;
+    try parse_side_to_move(&board, "b");
+    try std.testing.expectEqual(types.Color.black, board.side_to_move);
+}
+
+test "parse side to move with x" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidSideToMove,
+        parse_side_to_move(&board, "x"),
+    );
+}
+
+test "parse side to move with ww" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidSideToMove,
+        parse_side_to_move(&board, "ww"),
+    );
+}
+
 fn parse_castling_ability(board: *Board, part: []const u8) FenError!void {
     board.castling_ability = .{};
 
@@ -274,43 +204,161 @@ fn parse_castling_ability(board: *Board, part: []const u8) FenError!void {
     }
 }
 
-/// The en passant target square is specified after a double push of a pawn,
-/// no matter whether an en passant capture is really possible or not.
-/// Other moves than double pawn pushes imply the symbol '-' for this FEN field.
+test "parse castling ability with -" {
+    var board: Board = undefined;
+    try parse_castling_ability(&board, "-");
+    try std.testing.expectEqual(
+        types.Castling{
+            .white_long = false,
+            .white_short = false,
+            .black_long = false,
+            .black_short = false,
+        },
+        board.castling_ability,
+    );
+}
+
+test "parse castling ability with KQkq" {
+    var board: Board = undefined;
+    try parse_castling_ability(&board, "KQkq");
+    try std.testing.expectEqual(
+        types.Castling{
+            .white_long = true,
+            .white_short = true,
+            .black_long = true,
+            .black_short = true,
+        },
+        board.castling_ability,
+    );
+}
+
+test "parse castling ability with Kq" {
+    var board: Board = undefined;
+    try parse_castling_ability(&board, "Kq");
+    try std.testing.expectEqual(
+        types.Castling{
+            .white_long = false,
+            .white_short = true,
+            .black_long = true,
+            .black_short = false,
+        },
+        board.castling_ability,
+    );
+}
+
+test "parse castling ability with x" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidCastlingAbility,
+        parse_castling_ability(&board, "x"),
+    );
+}
+
+test "parse castling ability with KQkqK" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidCastlingAbility,
+        parse_castling_ability(&board, "KQkqK"),
+    );
+}
+
 fn parse_en_passent_target_square(board: *Board, part: []const u8) FenError!void {
     switch (part.len) {
         1 => {
             if (part[0] != '-') {
                 std.log.err("en_passent_target_square: {s}", .{part});
-                return FenError.InvalidEnPassentSquare;
+                return FenError.InvalidEnPassentTargetSquare;
             }
             board.en_passent_target_square = null;
         },
         2 => {
             const file_letter = std.meta.stringToEnum(types.File, part[0..1]) orelse {
                 std.log.err("en_passent_target_square: {s}", .{part});
-                return FenError.InvalidEnPassentSquare;
+                return FenError.InvalidEnPassentTargetSquare;
             };
             const rank = std.meta.stringToEnum(types.Rank, part[1..2]) orelse {
                 std.log.err("en_passent_target_square: {s}", .{part});
-                return FenError.InvalidEnPassentSquare;
+                return FenError.InvalidEnPassentTargetSquare;
             };
 
             if (rank != .@"3" and rank != .@"6") {
                 std.log.err("en_passent_target_square: {s}", .{part});
-                return FenError.InvalidEnPassentSquare;
+                return FenError.InvalidEnPassentTargetSquare;
             }
             board.en_passent_target_square = .{ .rank = rank, .file = file_letter };
         },
         else => {
             std.log.err("en_passent_target_square: {s}", .{part});
-            return FenError.InvalidEnPassentSquare;
+            return FenError.InvalidEnPassentTargetSquare;
         },
     }
 }
 
-/// The halfmove clock specifies a decimal number of half moves with respect to the 50 move draw rule.
-/// It is reset to zero after a capture or a pawn move and incremented otherwise.
+test "parse en passent target square with -" {
+    var board: Board = undefined;
+    try parse_en_passent_target_square(&board, "-");
+    try std.testing.expectEqual(
+        @as(?types.Square, null),
+        board.en_passent_target_square,
+    );
+}
+
+test "parse en passent target square with e3" {
+    var board: Board = undefined;
+    try parse_en_passent_target_square(&board, "e3");
+    try std.testing.expectEqual(
+        types.Square{
+            .file = types.File.e,
+            .rank = types.Rank.@"3",
+        },
+        board.en_passent_target_square.?,
+    );
+}
+
+test "parse en passent target square with d6" {
+    var board: Board = undefined;
+    try parse_en_passent_target_square(&board, "d6");
+    try std.testing.expectEqual(
+        types.Square{
+            .file = types.File.d,
+            .rank = types.Rank.@"6",
+        },
+        board.en_passent_target_square.?,
+    );
+}
+
+test "parse en passent target square with a1" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidEnPassentTargetSquare,
+        parse_en_passent_target_square(&board, "a1"),
+    );
+}
+
+test "parse en passent target square with x3" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidEnPassentTargetSquare,
+        parse_en_passent_target_square(&board, "x3"),
+    );
+}
+
+test "parse en passent target square with e3e3" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidEnPassentTargetSquare,
+        parse_en_passent_target_square(&board, "e3e3"),
+    );
+}
+
+test "parse en passent target square with e" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidEnPassentTargetSquare,
+        parse_en_passent_target_square(&board, "e"),
+    );
+}
+
 fn parse_halfmove_clock(board: *Board, part: []const u8) FenError!void {
     board.halfmove_clock = std.fmt.parseInt(types.HalfmoveClock, part, 10) catch {
         std.log.err("halfmove_clock: {s}", .{part});
@@ -318,10 +366,304 @@ fn parse_halfmove_clock(board: *Board, part: []const u8) FenError!void {
     };
 }
 
-/// The number of the full moves in a game. It starts at 1, and is incremented after each Black's move.
+test "parse halfmove clock with 0" {
+    var board: Board = undefined;
+    try parse_halfmove_clock(&board, "0");
+    try std.testing.expectEqual(@as(types.HalfmoveClock, 0), board.halfmove_clock);
+}
+
+test "parse halfmove clock with 25" {
+    var board: Board = undefined;
+    try parse_halfmove_clock(&board, "25");
+    try std.testing.expectEqual(@as(types.HalfmoveClock, 25), board.halfmove_clock);
+}
+
+test "parse halfmove clock with x" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidHalfmoveClock,
+        parse_halfmove_clock(&board, "x"),
+    );
+}
+
+test "parse halfmove clock with 51" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidHalfmoveClock,
+        parse_halfmove_clock(&board, "51"),
+    );
+}
+
+test "parse halfmove clock with -1" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidHalfmoveClock,
+        parse_halfmove_clock(&board, "-1"),
+    );
+}
+
 fn parse_fullmove_counter(board: *Board, part: []const u8) FenError!void {
     board.fullmove_counter = std.fmt.parseInt(types.FullmoveCounter, part, 10) catch {
         std.log.err("fullmove_counter: {s}", .{part});
         return FenError.InvalidFullmoveCounter;
     };
+}
+
+test "parse fullmove counter with 0" {
+    var board: Board = undefined;
+    try parse_fullmove_counter(&board, "0");
+    try std.testing.expectEqual(@as(types.FullmoveCounter, 0), board.fullmove_counter);
+}
+
+test "parse fullmove counter with 50" {
+    var board: Board = undefined;
+    try parse_fullmove_counter(&board, "50");
+    try std.testing.expectEqual(@as(types.FullmoveCounter, 50), board.fullmove_counter);
+}
+
+test "parse fullmove counter with x" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidFullmoveCounter,
+        parse_fullmove_counter(&board, "x"),
+    );
+}
+
+test "parse fullmove counter with 100" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidFullmoveCounter,
+        parse_fullmove_counter(&board, "100"),
+    );
+}
+
+test "parse fullmove counter with -1" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        FenError.InvalidFullmoveCounter,
+        parse_fullmove_counter(&board, "-1"),
+    );
+}
+
+pub fn write(board: *const Board, writer: anytype) !void {
+    try write_pieces(board, writer);
+    try writer.writeAll(" ");
+    try write_side_to_move(board, writer);
+    try writer.writeAll(" ");
+    try write_castling_ability(board, writer);
+    try writer.writeAll(" ");
+    try write_en_passent_target_square(board, writer);
+    try writer.writeAll(" ");
+    try write_halfmove_clock(board, writer);
+    try writer.writeAll(" ");
+    try write_fullmove_counter(board, writer);
+}
+
+fn write_pieces(board: *const Board, writer: anytype) !void {
+    for (0..8) |i| {
+        var empty: u8 = 0;
+
+        for (0..8) |j| {
+            const bit_index = ((j & 0b111) << 3) | (i & 0b111);
+            var piece_char: u8 = ' ';
+
+            inline for (.{
+                board.rook_bitboard,
+                board.pawn_bitboard,
+                board.king_bitboard,
+                board.knight_bitboard,
+                board.bishop_bitboard,
+                board.queen_bitboard,
+            }, .{ 'r', 'p', 'k', 'n', 'b', 'q' }) |piece_board, char| {
+                if (piece_board.state.isSet(bit_index)) {
+                    piece_char = if (board.white_bitboard.state.isSet(bit_index)) std.ascii.toUpper(char) else char;
+                    break;
+                }
+            }
+
+            if (piece_char == ' ') {
+                empty += 1;
+            } else {
+                if (empty != 0) {
+                    try writer.print("{}", .{empty});
+                    empty = 0;
+                }
+
+                try writer.print("{c}", .{piece_char});
+            }
+
+            if (empty != 0 and j == 7) {
+                try writer.print("{}", .{empty});
+            }
+        }
+
+        if (i < 7) {
+            try writer.writeAll("/");
+        }
+    }
+}
+
+test "write pieces" {
+    return error.SkipZigTest;
+}
+
+fn write_side_to_move(board: *const Board, writer: anytype) !void {
+    const color: u8 = if (board.side_to_move == types.Color.black) 'b' else 'w';
+    try writer.print("{c}", .{color});
+}
+
+test "write side to move with white" {
+    var board: Board = undefined;
+    var buffer: [1]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.side_to_move = types.Color.white;
+    try write_side_to_move(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 1), stream.pos);
+    try std.testing.expectEqual(@as(u8, 'w'), buffer[0]);
+}
+
+test "write side to move with black" {
+    var board: Board = undefined;
+    var buffer: [1]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.side_to_move = types.Color.black;
+    try write_side_to_move(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 1), stream.pos);
+    try std.testing.expectEqual(@as(u8, 'b'), buffer[0]);
+}
+
+fn write_castling_ability(board: *const Board, writer: anytype) !void {
+    if (@as(u4, @bitCast(board.castling_ability)) == 0) {
+        try writer.writeAll("-");
+    } else {
+        inline for (.{
+            board.castling_ability.white_short,
+            board.castling_ability.white_long,
+            board.castling_ability.black_short,
+            board.castling_ability.black_long,
+        }, .{ 'K', 'Q', 'k', 'q' }) |flag, char| {
+            if (flag) {
+                try writer.print("{c}", .{char});
+            }
+        }
+    }
+}
+
+test "write castling ability with -" {
+    var board: Board = undefined;
+    var buffer: [1]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.castling_ability = types.Castling{
+        .white_long = false,
+        .white_short = false,
+        .black_long = false,
+        .black_short = false,
+    };
+    try write_castling_ability(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 1), stream.pos);
+    try std.testing.expectEqual(@as(u8, '-'), buffer[0]);
+}
+
+test "write castling ability with KQkq" {
+    var board: Board = undefined;
+    var buffer: [4]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.castling_ability = types.Castling{
+        .white_long = true,
+        .white_short = true,
+        .black_long = true,
+        .black_short = true,
+    };
+    try write_castling_ability(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 4), stream.pos);
+    try std.testing.expectEqualStrings("KQkq", &buffer);
+}
+
+test "write castling ability with Kq" {
+    var board: Board = undefined;
+    var buffer: [2]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.castling_ability = types.Castling{
+        .white_long = false,
+        .white_short = true,
+        .black_long = true,
+        .black_short = false,
+    };
+    try write_castling_ability(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 2), stream.pos);
+    try std.testing.expectEqualStrings("Kq", &buffer);
+}
+
+fn write_en_passent_target_square(board: *const Board, writer: anytype) !void {
+    if (board.en_passent_target_square) |square| {
+        try writer.print("{s}{s}", .{ @tagName(square.file), @tagName(square.rank) });
+    } else {
+        try writer.writeAll("-");
+    }
+}
+
+test "write en passent target square with null" {
+    var board: Board = undefined;
+    var buffer: [1]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.en_passent_target_square = null;
+    try write_en_passent_target_square(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 1), stream.pos);
+    try std.testing.expectEqualStrings("-", &buffer);
+}
+
+test "write en passent target square with e3" {
+    var board: Board = undefined;
+    var buffer: [2]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.en_passent_target_square = types.Square{ .file = types.File.e, .rank = types.Rank.@"3" };
+    try write_en_passent_target_square(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 2), stream.pos);
+    try std.testing.expectEqualStrings("e3", &buffer);
+}
+
+fn write_halfmove_clock(board: *const Board, writer: anytype) !void {
+    try writer.print("{}", .{board.halfmove_clock});
+}
+
+test "write halfmove clock with 25" {
+    var board: Board = undefined;
+    var buffer: [2]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.halfmove_clock = 25;
+    try write_halfmove_clock(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 2), stream.pos);
+    try std.testing.expectEqualStrings("25", &buffer);
+}
+
+fn write_fullmove_counter(board: *const Board, writer: anytype) !void {
+    try writer.print("{}", .{board.fullmove_counter});
+}
+
+test "write fullmove counter with 50" {
+    var board: Board = undefined;
+    var buffer: [2]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+
+    board.fullmove_counter = 50;
+    try write_fullmove_counter(&board, stream.writer());
+
+    try std.testing.expectEqual(@as(usize, 2), stream.pos);
+    try std.testing.expectEqualStrings("50", &buffer);
 }

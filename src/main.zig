@@ -1,6 +1,10 @@
 const std = @import("std");
 const fen = @import("fen.zig");
 
+test "root" {
+    std.testing.refAllDecls(fen);
+}
+
 pub fn main() !void {
     try std.io.getStdOut().writeAll("\n");
 
