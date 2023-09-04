@@ -1,5 +1,8 @@
 const std = @import("std");
 
+pub const N_SQUARES = 64;
+pub const N_PIECES = 6;
+
 pub const Color = enum { white, black };
 
 pub const PieceType = enum {
