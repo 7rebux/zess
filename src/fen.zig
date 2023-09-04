@@ -1,8 +1,10 @@
-/// Forsyth-Edwards Notation
 /// https://www.chessprogramming.org/Forsyth-Edwards_Notation
 /// <Piece Placement> <Side to move> <Castling ability> <En passsant target square> <Halfmove clock> <Fullmove counter>
+
+// TODO: maybe put zobrist related things in board and create setters
 const std = @import("std");
 const types = @import("types.zig");
+const zobrist = @import("zobrist.zig");
 const Board = @import("board.zig").Board;
 
 const FenError = error{
@@ -21,6 +23,9 @@ pub fn parse(fen: []const u8) FenError!Board {
     var parts_it = std.mem.split(u8, fen, " ");
     var parts: [6][]const u8 = undefined;
     var i: u8 = 0;
+
+    // make sure zobrist hashes are initialized
+    std.debug.assert(zobrist.side_to_move_hash != 0);
 
     while (parts_it.next()) |part| : (i += 1) {
         if (i > 5) {
@@ -101,10 +106,12 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
                         },
                     }
 
-                    inline for (.{ .rook, .knight, .bishop, .pawn, .queen, .king }) |p| {
+                    inline for (comptime std.enums.values(types.PieceType)) |p| {
                         if (p == piece) {
                             std.debug.assert(!board.get_piece_board(p).state.isSet(bit_index));
                             board.get_piece_board(p).state.set(bit_index);
+                            const piece_index = (if (color == types.Color.white) @as(usize, 0) else @as(usize, 6)) + @intFromEnum(p);
+                            board.zobrist_hash ^= zobrist.pieces_hash[piece_index][bit_index];
                         }
                     }
 
@@ -136,6 +143,7 @@ fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
         },
         'b' => {
             board.side_to_move = types.Color.black;
+            board.zobrist_hash ^= zobrist.side_to_move_hash;
         },
         else => {
             std.log.err("side_to_move: {s}", .{part});
@@ -185,15 +193,19 @@ fn parse_castling_ability(board: *Board, part: []const u8) FenError!void {
             switch (seg) {
                 'K' => {
                     board.castling_ability.white_short = true;
+                    board.zobrist_hash ^= zobrist.castling_rights_hash[0];
                 },
                 'Q' => {
                     board.castling_ability.white_long = true;
+                    board.zobrist_hash ^= zobrist.castling_rights_hash[1];
                 },
                 'k' => {
                     board.castling_ability.black_short = true;
+                    board.zobrist_hash ^= zobrist.castling_rights_hash[2];
                 },
                 'q' => {
                     board.castling_ability.black_long = true;
+                    board.zobrist_hash ^= zobrist.castling_rights_hash[3];
                 },
                 else => {
                     std.log.err("castling_ability: {s}", .{part});
@@ -285,7 +297,9 @@ fn parse_en_passent_target_square(board: *Board, part: []const u8) FenError!void
                 std.log.err("en_passent_target_square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             }
+
             board.en_passent_target_square = .{ .rank = rank, .file = file_letter };
+            board.zobrist_hash ^= zobrist.en_passent_file_hash[@intFromEnum(file_letter)];
         },
         else => {
             std.log.err("en_passent_target_square: {s}", .{part});

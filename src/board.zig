@@ -13,9 +13,12 @@ pub const Board = struct {
 
     side_to_move: types.Color,
     castling_ability: types.Castling,
+    // TODO: only the file is needed here since we know the color
     en_passent_target_square: ?types.Square,
     halfmove_clock: types.HalfmoveClock,
     fullmove_counter: types.FullmoveCounter,
+
+    zobrist_hash: u64 = 0,
 
     const Self = @This();
 

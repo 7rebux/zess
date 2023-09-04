@@ -16,4 +16,6 @@ pub fn main() !void {
 
     try board.print(std.io.getStdOut().writer());
     try fen.write(&board, std.io.getStdOut().writer());
+
+    std.debug.print("\n{}", .{board.zobrist_hash});
 }
