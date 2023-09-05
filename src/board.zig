@@ -13,8 +13,7 @@ pub const Board = struct {
 
     side_to_move: types.Color,
     castling_ability: types.Castling,
-    // TODO: only the file is needed here since we know the color
-    en_passent_target_square: ?types.Square,
+    en_passent_file: ?types.File,
     halfmove_clock: types.HalfmoveClock,
     fullmove_counter: types.FullmoveCounter,
 

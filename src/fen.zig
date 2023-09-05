@@ -1,7 +1,5 @@
 /// https://www.chessprogramming.org/Forsyth-Edwards_Notation
 /// <Piece Placement> <Side to move> <Castling ability> <En passsant target square> <Halfmove clock> <Fullmove counter>
-
-// TODO: maybe put zobrist related things in board and create setters
 const std = @import("std");
 const types = @import("types.zig");
 const zobrist = @import("zobrist.zig");
@@ -127,6 +125,7 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
     }
 }
 
+// TODO: implement
 test "parse pieces" {
     return error.SkipZigTest;
 }
@@ -281,24 +280,25 @@ fn parse_en_passent_target_square(board: *Board, part: []const u8) FenError!void
                 std.log.err("en_passent_target_square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             }
-            board.en_passent_target_square = null;
+            board.en_passent_file = null;
         },
         2 => {
             const file_letter = std.meta.stringToEnum(types.File, part[0..1]) orelse {
                 std.log.err("en_passent_target_square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             };
+
+            // this is only used for fen validation purposes
             const rank = std.meta.stringToEnum(types.Rank, part[1..2]) orelse {
                 std.log.err("en_passent_target_square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             };
-
             if (rank != .@"3" and rank != .@"6") {
                 std.log.err("en_passent_target_square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             }
 
-            board.en_passent_target_square = .{ .rank = rank, .file = file_letter };
+            board.en_passent_file = file_letter;
             board.zobrist_hash ^= zobrist.en_passent_file_hash[@intFromEnum(file_letter)];
         },
         else => {
@@ -312,8 +312,8 @@ test "parse en passent target square with -" {
     var board: Board = undefined;
     try parse_en_passent_target_square(&board, "-");
     try std.testing.expectEqual(
-        @as(?types.Square, null),
-        board.en_passent_target_square,
+        @as(?types.File, null),
+        board.en_passent_file,
     );
 }
 
@@ -321,11 +321,8 @@ test "parse en passent target square with e3" {
     var board: Board = undefined;
     try parse_en_passent_target_square(&board, "e3");
     try std.testing.expectEqual(
-        types.Square{
-            .file = types.File.e,
-            .rank = types.Rank.@"3",
-        },
-        board.en_passent_target_square.?,
+        types.File.e,
+        board.en_passent_file.?,
     );
 }
 
@@ -333,11 +330,8 @@ test "parse en passent target square with d6" {
     var board: Board = undefined;
     try parse_en_passent_target_square(&board, "d6");
     try std.testing.expectEqual(
-        types.Square{
-            .file = types.File.d,
-            .rank = types.Rank.@"6",
-        },
-        board.en_passent_target_square.?,
+        types.File.d,
+        board.en_passent_file.?,
     );
 }
 
@@ -529,6 +523,7 @@ fn write_pieces(board: *const Board, writer: anytype) !void {
     }
 }
 
+// TODO: implement
 test "write pieces" {
     return error.SkipZigTest;
 }
@@ -631,8 +626,10 @@ test "write castling ability with Kq" {
 }
 
 fn write_en_passent_target_square(board: *const Board, writer: anytype) !void {
-    if (board.en_passent_target_square) |square| {
-        try writer.print("{s}{s}", .{ @tagName(square.file), @tagName(square.rank) });
+    const rank = if (board.side_to_move == types.Color.black) types.Rank.@"3" else types.Rank.@"6";
+
+    if (board.en_passent_file) |file| {
+        try writer.print("{s}{s}", .{ @tagName(file), @tagName(rank) });
     } else {
         try writer.writeAll("-");
     }
@@ -643,19 +640,20 @@ test "write en passent target square with null" {
     var buffer: [1]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
 
-    board.en_passent_target_square = null;
+    board.en_passent_file = null;
     try write_en_passent_target_square(&board, stream.writer());
 
     try std.testing.expectEqual(@as(usize, 1), stream.pos);
     try std.testing.expectEqualStrings("-", &buffer);
 }
 
-test "write en passent target square with e3" {
+test "write en passent target square with e and black to move" {
     var board: Board = undefined;
     var buffer: [2]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
 
-    board.en_passent_target_square = types.Square{ .file = types.File.e, .rank = types.Rank.@"3" };
+    board.en_passent_file = types.File.e;
+    board.side_to_move = types.Color.black;
     try write_en_passent_target_square(&board, stream.writer());
 
     try std.testing.expectEqual(@as(usize, 2), stream.pos);
