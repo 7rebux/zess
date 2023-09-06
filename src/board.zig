@@ -23,10 +23,14 @@ pub const Board = struct {
 
     pub fn print(self: *Self, writer: anytype) !void {
         try writer.print("  a b c d e f g h\n", .{});
-        for (0..8) |i| {
-            try writer.print("{} ", .{i + 1});
-            for (0..8) |j| {
-                const bit_index = ((j & 0b111) << 3) | (i & 0b111);
+        var rank_index: u8 = 8;
+
+        while (rank_index > 0) {
+            rank_index -= 1;
+
+            try writer.print("{} ", .{rank_index + 1});
+            for (0..8) |file_index| {
+                const bit_index = ((file_index & 0b111) << 3) | (rank_index & 0b111);
                 var piece_char: u8 = ' ';
 
                 inline for (.{

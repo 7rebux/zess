@@ -50,8 +50,8 @@ pub fn parse(fen: []const u8) FenError!Board {
 }
 
 fn parse_pieces(board: *Board, part: []const u8) FenError!void {
-    var i: u8 = 0;
     var ranks_it = std.mem.split(u8, part, "/");
+    var rank_index: u8 = 8;
 
     board.rook_bitboard = types.Bitboard.initEmpty();
     board.knight_bitboard = types.Bitboard.initEmpty();
@@ -62,22 +62,23 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
     board.white_bitboard = types.Bitboard.initEmpty();
     board.black_bitboard = types.Bitboard.initEmpty();
 
-    while (ranks_it.next()) |rank| : (i += 1) {
-        var j: u8 = 0;
+    while (rank_index > 0) {
+        rank_index -= 1;
 
-        if (i > 7) {
+        const rank = ranks_it.next() orelse {
             std.log.err("pieces: {s}", .{part});
             return FenError.InvalidPiecesPlacement;
-        }
+        };
+        var file_index: u8 = 0;
 
         for (rank) |x| {
-            var bit_index = ((j & 0b111) << 3) | (i & 0b111);
+            var bit_index = ((file_index & 0b111) << 3) | (rank_index & 0b111);
 
             switch (x) {
                 inline '1'...'8' => |inc| {
                     const val = comptime std.fmt.parseInt(u4, &.{inc}, 10) catch unreachable;
-                    j += val;
-                    if (j >= 8) break;
+                    file_index += val;
+                    if (file_index >= 8) break;
                 },
                 else => |c| {
                     const color = if (std.ascii.isLower(c)) types.Color.black else types.Color.white;
@@ -113,16 +114,40 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
                         }
                     }
 
-                    j += 1;
+                    file_index += 1;
                 },
             }
         }
     }
 
-    if (i < 7) {
+    if (ranks_it.next() != null) {
         std.log.err("pieces: {s}", .{part});
         return FenError.InvalidPiecesPlacement;
     }
+}
+
+test "parse pieces with 1 rank" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        error.InvalidPiecesPlacement,
+        parse_pieces(&board, "8"),
+    );
+}
+
+test "parse pieces with 7 ranks" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        error.InvalidPiecesPlacement,
+        parse_pieces(&board, "8/8/8/8/8/8/8"),
+    );
+}
+
+test "parse pieces with 9 ranks" {
+    var board: Board = undefined;
+    try std.testing.expectError(
+        error.InvalidPiecesPlacement,
+        parse_pieces(&board, "8/8/8/8/8/8/8/8/8"),
+    );
 }
 
 // TODO: implement
@@ -480,11 +505,15 @@ pub fn write(board: *const Board, writer: anytype) !void {
 }
 
 fn write_pieces(board: *const Board, writer: anytype) !void {
-    for (0..8) |i| {
+    var rank_index: u8 = 8;
+
+    while (rank_index > 0) {
+        rank_index -= 1;
+
         var empty: u8 = 0;
 
-        for (0..8) |j| {
-            const bit_index = ((j & 0b111) << 3) | (i & 0b111);
+        for (0..8) |file_index| {
+            const bit_index = ((file_index & 0b111) << 3) | (rank_index & 0b111);
             var piece_char: u8 = ' ';
 
             inline for (.{
@@ -512,12 +541,12 @@ fn write_pieces(board: *const Board, writer: anytype) !void {
                 try writer.print("{c}", .{piece_char});
             }
 
-            if (empty != 0 and j == 7) {
+            if (empty != 0 and file_index == 7) {
                 try writer.print("{}", .{empty});
             }
         }
 
-        if (i < 7) {
+        if (rank_index > 0) {
             try writer.writeAll("/");
         }
     }
