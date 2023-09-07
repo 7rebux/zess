@@ -7,7 +7,10 @@ const Board = @import("board.zig").Board;
 
 const FenError = error{
     TooManyParts,
-    NotEnoughParts,
+    TooFewParts,
+    TooManyRanks,
+    TooFewRanks,
+    InvalidPieceChar,
     InvalidPiecesPlacement,
     InvalidSideToMove,
     InvalidEnPassentTargetSquare,
@@ -27,7 +30,7 @@ pub fn parse(fen: []const u8) FenError!Board {
 
     while (parts_it.next()) |part| : (i += 1) {
         if (i > 5) {
-            std.log.err("FEN: {s}", .{fen});
+            std.log.warn("Too many FEN parts: {s}", .{fen});
             return FenError.TooManyParts;
         }
 
@@ -35,8 +38,8 @@ pub fn parse(fen: []const u8) FenError!Board {
     }
 
     if (i < 5) {
-        std.log.err("FEN: {s}", .{fen});
-        return FenError.NotEnoughParts;
+        std.log.warn("Too few FEN parts: {s}", .{fen});
+        return FenError.TooFewParts;
     }
 
     try parse_pieces(&board, parts[0]);
@@ -66,8 +69,8 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
         rank_index -= 1;
 
         const rank = ranks_it.next() orelse {
-            std.log.err("pieces: {s}", .{part});
-            return FenError.InvalidPiecesPlacement;
+            std.log.warn("Not enough ranks: {s}", .{part});
+            return FenError.TooFewRanks;
         };
         var file_index: u8 = 0;
 
@@ -90,8 +93,8 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
                         .{ "q", .queen },
                         .{ "k", .king },
                     }).get(&.{std.ascii.toLower(c)}) orelse {
-                        std.log.err("piece: {any}", .{c});
-                        return FenError.InvalidPiecesPlacement;
+                        std.log.warn("Invalid piece char: {any}", .{c});
+                        return FenError.InvalidPieceChar;
                     };
 
                     switch (color) {
@@ -121,8 +124,8 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
     }
 
     if (ranks_it.next() != null) {
-        std.log.err("pieces: {s}", .{part});
-        return FenError.InvalidPiecesPlacement;
+        std.log.warn("Too many ranks: {s}", .{part});
+        return FenError.TooManyRanks;
     }
 }
 
@@ -157,7 +160,7 @@ test "parse pieces" {
 
 fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
     if (part.len > 1) {
-        std.log.err("side_to_move: {s}", .{part});
+        std.log.warn("Invalid side to move: {s}", .{part});
         return FenError.InvalidSideToMove;
     }
 
@@ -170,7 +173,7 @@ fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
             board.zobrist_hash ^= zobrist.side_to_move_hash;
         },
         else => {
-            std.log.err("side_to_move: {s}", .{part});
+            std.log.warn("Invalid side to move: {s}", .{part});
             return FenError.InvalidSideToMove;
         },
     }
@@ -209,7 +212,7 @@ fn parse_castling_ability(board: *Board, part: []const u8) FenError!void {
 
     if (part[0] != '-') {
         if (part.len > 4) {
-            std.log.err("castling_ability: {s}", .{part});
+            std.log.warn("Invalid castling ability: {s}", .{part});
             return FenError.InvalidCastlingAbility;
         }
 
@@ -232,7 +235,7 @@ fn parse_castling_ability(board: *Board, part: []const u8) FenError!void {
                     board.zobrist_hash ^= zobrist.castling_rights_hash[3];
                 },
                 else => {
-                    std.log.err("castling_ability: {s}", .{part});
+                    std.log.warn("Invalid castling ability: {s}", .{part});
                     return FenError.InvalidCastlingAbility;
                 },
             }
@@ -302,24 +305,24 @@ fn parse_en_passent_target_square(board: *Board, part: []const u8) FenError!void
     switch (part.len) {
         1 => {
             if (part[0] != '-') {
-                std.log.err("en_passent_target_square: {s}", .{part});
+                std.log.warn("Invalid en passent target square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             }
             board.en_passent_file = null;
         },
         2 => {
             const file_letter = std.meta.stringToEnum(types.File, part[0..1]) orelse {
-                std.log.err("en_passent_target_square: {s}", .{part});
+                std.log.warn("Invalid en passent target square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             };
 
             // this is only used for fen validation purposes
             const rank = std.meta.stringToEnum(types.Rank, part[1..2]) orelse {
-                std.log.err("en_passent_target_square: {s}", .{part});
+                std.log.warn("Invalid en passent target square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             };
             if (rank != .@"3" and rank != .@"6") {
-                std.log.err("en_passent_target_square: {s}", .{part});
+                std.log.warn("Invalid en passent target square: {s}", .{part});
                 return FenError.InvalidEnPassentTargetSquare;
             }
 
@@ -327,7 +330,7 @@ fn parse_en_passent_target_square(board: *Board, part: []const u8) FenError!void
             board.zobrist_hash ^= zobrist.en_passent_file_hash[@intFromEnum(file_letter)];
         },
         else => {
-            std.log.err("en_passent_target_square: {s}", .{part});
+            std.log.warn("Invalid en passent target square: {s}", .{part});
             return FenError.InvalidEnPassentTargetSquare;
         },
     }
@@ -394,12 +397,12 @@ test "parse en passent target square with e" {
 
 fn parse_halfmove_clock(board: *Board, part: []const u8) FenError!void {
     const halfmove_clock = std.fmt.parseInt(types.HalfmoveClock, part, 10) catch {
-        std.log.err("halfmove_clock: {s}", .{part});
+        std.log.warn("Invalid half move clock: {s}", .{part});
         return FenError.InvalidHalfmoveClock;
     };
 
     if (halfmove_clock > 50) {
-        std.log.err("halfmove_clock: {s}", .{part});
+        std.log.warn("Invalid half move clock: {s}", .{part});
         return FenError.InvalidHalfmoveClock;
     }
     board.halfmove_clock = halfmove_clock;
@@ -443,12 +446,12 @@ test "parse halfmove clock with -1" {
 
 fn parse_fullmove_counter(board: *Board, part: []const u8) FenError!void {
     const fullmove_counter = std.fmt.parseInt(types.FullmoveCounter, part, 10) catch {
-        std.log.err("fullmove_counter: {s}", .{part});
+        std.log.warn("Invalid full move counter: {s}", .{part});
         return FenError.InvalidFullmoveCounter;
     };
 
     if (fullmove_counter > 99) {
-        std.log.err("fullmove_counter: {s}", .{part});
+        std.log.warn("Invalid full move counter: {s}", .{part});
         return FenError.InvalidFullmoveCounter;
     }
     board.fullmove_counter = fullmove_counter;
