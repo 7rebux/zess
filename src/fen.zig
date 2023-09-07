@@ -132,7 +132,7 @@ fn parse_pieces(board: *Board, part: []const u8) FenError!void {
 test "parse pieces with 1 rank" {
     var board: Board = undefined;
     try std.testing.expectError(
-        error.InvalidPiecesPlacement,
+        error.TooFewRanks,
         parse_pieces(&board, "8"),
     );
 }
@@ -140,7 +140,7 @@ test "parse pieces with 1 rank" {
 test "parse pieces with 7 ranks" {
     var board: Board = undefined;
     try std.testing.expectError(
-        error.InvalidPiecesPlacement,
+        error.TooFewRanks,
         parse_pieces(&board, "8/8/8/8/8/8/8"),
     );
 }
@@ -148,7 +148,7 @@ test "parse pieces with 7 ranks" {
 test "parse pieces with 9 ranks" {
     var board: Board = undefined;
     try std.testing.expectError(
-        error.InvalidPiecesPlacement,
+        error.TooManyRanks,
         parse_pieces(&board, "8/8/8/8/8/8/8/8/8"),
     );
 }
