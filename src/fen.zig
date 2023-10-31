@@ -52,6 +52,17 @@ pub fn parse(fen: []const u8) FenError!Board {
     return board;
 }
 
+test "parse start position" {
+    var parsed_board = try parse("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+    // TODO check bitboards or create mailbox and check that
+    try std.testing.expectEqual(types.Color.white, parsed_board.side_to_move);
+    try std.testing.expectEqual(types.Castling{ .black_short = true, .black_long = true, .white_short = true, .white_long = true }, parsed_board.castling_ability);
+    try std.testing.expectEqual(@as(?types.File, null), parsed_board.en_passent_file);
+    try std.testing.expectEqual(@as(types.HalfmoveClock, 0), parsed_board.halfmove_clock);
+    try std.testing.expectEqual(@as(types.FullmoveCounter, 1), parsed_board.fullmove_counter);
+}
+
 fn parse_pieces(board: *Board, part: []const u8) FenError!void {
     var ranks_it = std.mem.split(u8, part, "/");
     var rank_index: u8 = 8;
@@ -151,11 +162,6 @@ test "parse pieces with 9 ranks" {
         error.TooManyRanks,
         parse_pieces(&board, "8/8/8/8/8/8/8/8/8"),
     );
-}
-
-// TODO: implement
-test "parse pieces" {
-    return error.SkipZigTest;
 }
 
 fn parse_side_to_move(board: *Board, part: []const u8) FenError!void {
