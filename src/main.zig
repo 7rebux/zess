@@ -7,15 +7,14 @@ test "root" {
 }
 
 pub fn main() !void {
-    try std.io.getStdOut().writeAll("\n");
+    const fen_string = "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2";
 
-    // Setup things
-    zobrist.init();
+    std.debug.print("{s}\n\n", .{fen_string});
 
-    var board = try fen.parse("rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2");
+    var board = try fen.parse(fen_string);
 
     try board.print(std.io.getStdOut().writer());
     try fen.write(&board, std.io.getStdOut().writer());
 
-    std.debug.print("\n{}", .{board.zobrist_hash});
+    std.debug.print("\nHash: {}", .{board.zobrist_hash});
 }
